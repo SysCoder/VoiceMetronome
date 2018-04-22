@@ -17,6 +17,7 @@ firebase.initializeApp({
   databaseURL: "https://metronome-dfcbd.firebaseio.com",
 });
 
+// [START YourAction]
 exports.selectMetronomeAudio = functions.https.onRequest((request, response) => {
   const app = new App({request, response});
   dashbot.configHandler(app);
@@ -34,8 +35,7 @@ exports.selectMetronomeAudio = functions.https.onRequest((request, response) => 
     let rhythm = getRhythmInformation(app, databaseContext);
     persistMetronomeSetting(app, userId, beatsPerMinute, rhythm);
 
-    let hasScreen = app.hasSurfaceCapability(app.SurfaceCapabilities.SCREEN_OUTPUT);
-    app.ask(metronomeAudioResponse(beatsPerMinute, rhythm, hasScreen));
+    app.ask(metronomeAudioResponse(app, beatsPerMinute, rhythm));
   }
 
   function changeRelativeSpeed (app) {
@@ -50,18 +50,14 @@ exports.selectMetronomeAudio = functions.https.onRequest((request, response) => 
     nextBeatPerMinute = nextBeatPerMinute < 20 ? 20 : nextBeatPerMinute;
     persistMetronomeSetting(app, userId, nextBeatPerMinute, rhythm);
 
-    // Since the Assistant on the phone does not support stacking audio sources or files longer than 2min
-    let hasScreen = app.hasSurfaceCapability(app.SurfaceCapabilities.SCREEN_OUTPUT);
-    app.ask(metronomeAudioResponse(nextBeatPerMinute, rhythm, hasScreen));
+    app.ask(metronomeAudioResponse(app, nextBeatPerMinute, rhythm));
   }
 
   function tellHowManyBeatsPerMinutes (app) {
     let currentBeatsPerMinute = getTempoInformation(app, databaseContext);
     let rhythm = getRhythmInformation(app, databaseContext);
 
-    // Since the Assistant on the phone does not support stacking audio sources or files longer than 2min
-    let hasScreen = app.hasSurfaceCapability(app.SurfaceCapabilities.SCREEN_OUTPUT);
-    app.ask(metronomeAudioResponse(currentBeatsPerMinute, rhythm, hasScreen));
+    app.ask(metronomeAudioResponse(app, currentBeatsPerMinute, rhythm));
   }
 
   const actionMap = new Map();
@@ -94,20 +90,19 @@ function speedDirectionToSpeedJump(speedDirection) {
   return relativeChangeForBeatPerMinute;
 }
 
-function metronomeAudioResponse(beatsPerMinute, rhythm, hasScreen) {
+function metronomeAudioResponse(app, beatsPerMinute, rhythm) {
   if (beatsPerMinute < 20 || beatsPerMinute > 300) {
     return 'Please provide a beats per minute that is between 20 and 300.';
   }
   let baseUrl =
       "https://s3-us-west-2.amazonaws.com/metronome-audio/lowQuality/";
+  let baseLongAudioUrl =
+      "https://s3-us-west-2.amazonaws.com/metronome-audio/longPlayingAudio/";
   let fileName = "BPM" + beatsPerMinute + "_Rhythm" + rhythm + ".ogg";
-  let beatAudioSSML = ('<audio src="'
+  let beatAudioSSML = '<audio src="'
       + baseUrl
       + fileName
-      + '">(Metronome sound)</audio>')
-      // Since the Assistant on the phone does not support stacking audio
-      // sources longer than 2min
-      .repeat(hasScreen ? 1 : 5);
+      + '">(Metronome sound)</audio>'
 
   let maxOrMinBPMText = "";
   if (beatsPerMinute === 300) {
@@ -127,12 +122,24 @@ function metronomeAudioResponse(beatsPerMinute, rhythm, hasScreen) {
     timeSignatureTerm = "Common Time rhythm. ";
   }
 
-  let textForPhone = "";
-  if (hasScreen) {
-    textForPhone = "On this device, the play time is limited to 2 minutes. ";
+  let textForPhone = "On this device, the play time is limited to 2 minutes. ";
+
+  let hasMediaPlayer =
+      app.hasSurfaceCapability(app.SurfaceCapabilities.MEDIA_RESPONSE_AUDIO);
+  if (hasMediaPlayer) {
+    let beatDescription = beatsPerMinute + ' beats per minute. ' + maxOrMinBPMText + timeSignatureTerm;
+    const richMediaResponse = app.buildRichResponse()
+      .addSimpleResponse(beatDescription)
+      .addMediaResponse(app.buildMediaResponse()
+        .addMediaObjects([
+          app.buildMediaObject(beatDescription, baseLongAudioUrl + fileName)
+        ]))
+      .addSuggestions(['Speed up', 'Slow down', 'Leave']);
+    return richMediaResponse;
   }
 
-  return '<speak>' + beatsPerMinute + ' beats per minute. ' + maxOrMinBPMText + timeSignatureTerm + beatAudioSSML + textForPhone + 'Do you want Voice Metronome to continue?</speak>';
+  // If a system does not have the media player, ssml for two minutes will be used.
+  return '<speak>' + beatDescription + beatAudioSSML + textForPhone + 'Do you want Voice Metronome to continue?</speak>';
 }
 
 // Check if a beats per minute was given.
@@ -185,3 +192,4 @@ function setSettingToDatabase(userId, tempo) {
 function getTempoFromDatabase(userId) {
   return firebase.database().ref('user/' + userId + '/tempo');
 }
+// [END YourAction]
