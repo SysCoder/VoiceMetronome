@@ -60,10 +60,30 @@ exports.selectMetronomeAudio = functions.https.onRequest((request, response) => 
     app.ask(metronomeAudioResponse(app, currentBeatsPerMinute, rhythm));
   }
 
+  function welcomeUserAndAskForReview(app) {
+    if (app.userStorage.timesVisited) {
+      app.userStorage.timesVisited += 1;
+    } else {
+      app.userStorage.timesVisited = 1;
+    }
+
+    if (app.userStorage.timesVisited == 1) {
+      app.ask("Hello, welcome to Voice Metronome. "
+              + "Please provide the beats per minute you would like to hear.");
+    } else if (app.userStorage.timesVisited == 3) {
+      app.ask("Thanks for continually using Voice Metronome. "
+              + "To support Voice Metronome, please give me 5 stars on the Assistant directory. "
+              + "What beats per minute would you like to hear?");
+    } else {
+      app.ask("Welcome back. What beats per minute would you like?");
+    }
+  }
+
   const actionMap = new Map();
   actionMap.set('input.temp_rhythm', responseHandler);
   actionMap.set('input.change_speed', changeRelativeSpeed);
   actionMap.set('input.tell_speed', tellHowManyBeatsPerMinutes);
+  actionMap.set('input.welcome', welcomeUserAndAskForReview);
 
   firebase.database().ref('/user/' + userId + '/tempoAndRhythm').once("value", function(data) {
     databaseContext = data;
@@ -126,8 +146,16 @@ function metronomeAudioResponse(app, beatsPerMinute, rhythm) {
 
   let hasMediaPlayer =
       app.hasSurfaceCapability(app.SurfaceCapabilities.MEDIA_RESPONSE_AUDIO);
+
+
+  let textForReview = "";
+  if ()
+  let textForReview = "Thanks for continually using Voice Metronome. To "
+                      + "support Voice Metronome, please give me 5 stars on "
+                      + "the Assistant directory. ";
+  let beatDescription = beatsPerMinute + ' beats per minute. ' + maxOrMinBPMText + timeSignatureTerm;
+
   if (hasMediaPlayer) {
-    let beatDescription = beatsPerMinute + ' beats per minute. ' + maxOrMinBPMText + timeSignatureTerm;
     const richMediaResponse = app.buildRichResponse()
       .addSimpleResponse(beatDescription)
       .addMediaResponse(app.buildMediaResponse()
